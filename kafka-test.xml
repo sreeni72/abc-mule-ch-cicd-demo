@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:kafka="http://www.mulesoft.org/schema/mule/kafka"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/kafka http://www.mulesoft.org/schema/mule/kafka/current/mule-kafka.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="f1e9f03c-0606-410a-a56b-45f426e7373d" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="f4c30da4-432b-493f-9614-906826c053a6" >
+		<vm:connection />
+		<vm:queues >
+			<vm:queue queueName="party-insert-Q" queueType="PERSISTENT" />
+			<vm:queue queueName="party-update-Q" queueType="PERSISTENT" />
+			<vm:queue queueName="return-Q" queueType="PERSISTENT" />
+		</vm:queues>
+	</vm:config>
+	<kafka:producer-config name="Apache_Kafka_Producer_configuration" doc:name="Apache Kafka Producer configuration" doc:id="548296c5-6f13-486c-a2cd-0a2443866e80" >
+		<kafka:producer-plaintext-connection >
+			<kafka:bootstrap-servers >
+				<kafka:bootstrap-server value="localhost:9092" />
+			</kafka:bootstrap-servers>
+		</kafka:producer-plaintext-connection>
+	</kafka:producer-config>
+	<kafka:consumer-config name="Apache_Kafka_Consumer_configuration" doc:name="Apache Kafka Consumer configuration" doc:id="e96b8579-ce09-4045-b405-3944f0155725" >
+		<kafka:consumer-plaintext-connection autoOffsetReset="EARLIEST" groupId="test-grp">
+			<kafka:bootstrap-servers >
+				<kafka:bootstrap-server value="localhost:9092" />
+			</kafka:bootstrap-servers>
+			<kafka:topic-patterns >
+				<kafka:topic-pattern value="demo1" />
+			</kafka:topic-patterns>
+		</kafka:consumer-plaintext-connection>
+	</kafka:consumer-config>
+	<flow name="kafka-testFlow" doc:id="2db2b66c-65e7-42fd-8c3d-b5b0470df5d9" >
+		<http:listener doc:name="Listener" doc:id="d06287a5-7123-4cf1-bf3d-e8cd418df706" config-ref="HTTP_Listener_config" path="/multi-publish"/>
+		<foreach doc:name="For Each" doc:id="9bea3a36-c821-4fd1-90e1-525365578fe1" collection="#[payload]">
+			<kafka:publish doc:name="Publish" doc:id="5cdaf002-116a-45db-9f79-e481c0a8fdde" key="#[now()]" topic="demo1" config-ref="Apache_Kafka_Producer_configuration" />
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="2aed259c-4692-4169-ac4d-6f90c1b1ab7b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message":"message published"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="kafka-testFlow5" doc:id="100d747f-0b28-4307-9227-525ac235964d" >
+		<http:listener doc:name="Listener" doc:id="73eb3b97-268c-4c75-8e03-127bd8c9c0ab" config-ref="HTTP_Listener_config" path="/single-publish"/>
+		<kafka:publish doc:name="Publish" doc:id="bfb66fc5-bde7-4db7-9500-bd49e1598707" config-ref="Apache_Kafka_Producer_configuration" topic="demo1" key="#[now()]"/>
+		<ee:transform doc:name="Transform Message" doc:id="1d77fc30-6755-4737-ba13-108e8f701081" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message":"message published"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="kafka-testFlow2" doc:id="8dd63652-03e8-4785-9fcd-79407e0a8873" >
+		<scheduler doc:name="Scheduler" doc:id="867cd558-fd53-41ee-b160-40bec06b8e32" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="60" timeUnit="SECONDS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<set-variable value="#[[]]" variableName="result" />
+		<try>
+			<foreach collection="#[1 to 10]">
+				<kafka:consume doc:name="Consume" doc:id="9aa28986-6912-426b-ada7-33495d825982" config-ref="Apache_Kafka_Consumer_configuration"/>
+				<ee:transform doc:name="Transform Message" doc:id="874da541-7b77-4487-90ad-5b516fe30c90">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+read(payload,"application/json")]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<ee:transform doc:name="Transform Message" doc:id="7e60d537-9b5e-470a-8e27-23193f2ccd72" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"level" : if(payload.payload.mids != null) "OUTLET" else
+	          if(payload.payload.ultimateParentPartyId == payload.payload.partyId) "GROUP" else
+	          "COMPANY",	          
+	"meta" : payload.meta,
+	"payload" : payload.payload
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<ee:transform doc:id="3ee48104-0c60-4bda-b5f3-ce582948982c">
+					<ee:message>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="result"><![CDATA[%dw 2.0
+output application/java
+---
+vars.result << payload]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</foreach>
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="false" type="ANY" >
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<set-payload value="#[vars.result]" doc:name="Set Payload" doc:id="ba70f273-85d2-4d91-987e-d3791ea18c94" />
+		<set-variable value="#[sizeOf(payload)]" doc:name="Set Variable" doc:id="d9e56511-e9fe-4824-815f-d76fa1f9f2fa" variableName="sizeOfPayload" />
+		<choice doc:name="Choice" doc:id="cae2a756-6e15-4352-a15d-f38465d66ea1" >
+			<when expression="#[vars.sizeOfPayload &gt; 0]">
+				<flow-ref doc:name="Flow Reference" doc:id="6bf6beeb-fdd6-4c32-8c9f-4c55694c4ea9" name="kafka-testSub_Flow"/>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="baf30a16-adc6-4efa-9851-8024c5cc52db" message="no message found" />
+			</otherwise>
+		</choice>
+	</flow>
+	<sub-flow name="kafka-testSub_Flow" doc:id="bc311d61-d57d-4df9-8546-54346511314b" >
+		<ee:transform doc:name="Transform Message" doc:id="54737108-b09d-4b5f-945d-8b39dc46e5f8">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload groupBy ((item, index) -> item.payload.ultimateParentPartyId) 
+mapObject ((value, key, index) -> {
+    (key) : (value orderBy ((item, index) -> item.meta.occurred_at))
+})
+pluck ((value, key, index) -> value)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="218c4c29-976a-421b-b5ad-901d03734036" collection="#[payload]">
+			<ee:transform doc:name="Transform Message" doc:id="9b5771f3-b2a8-4eea-b791-19e8e6c1fd04" >
+				<ee:message />
+				<ee:variables >
+					<ee:set-variable variableName="groupPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload filter ((item, index) -> item.level == "GROUP" )]]></ee:set-variable>
+					<ee:set-variable variableName="companyPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload filter ((item, index) -> item.level == "COMPANY" )]]></ee:set-variable>
+					<ee:set-variable variableName="outletPayload" ><![CDATA[%dw 2.0
+output application/json
+---
+payload filter ((item, index) -> item.level == "OUTLET" )]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<choice doc:name="Choice" doc:id="50d7d10f-5d69-46ba-9497-264b101181ee" >
+				<when expression='#[isEmpty(vars.outletPayload)]'>
+					<set-payload value="#[vars.groupPayload ++ vars.companyPayload]" doc:name="Set Payload" doc:id="4e7ccbca-5013-4241-8b13-6d4996d057e5" />
+					<foreach doc:name="For Each" doc:id="6cd5596b-2cfd-4d71-8c35-4a5d4d2a9800" collection="#[payload]" >
+						<ee:transform doc:name="Transform Message" doc:id="b380c95d-3a4b-4cd6-97b4-ae7d7b31fa9a" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{	   
+	"meta" : payload.meta,
+	"payload" : payload.payload
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<kafka:publish doc:name="Publish" doc:id="731050d7-23f4-401e-af59-b117a8961249" config-ref="Apache_Kafka_Producer_configuration" topic="demo1" key="#[now()]" />
+					</foreach>
+					<logger level="INFO" doc:name="Logger" doc:id="59b07493-81a4-457a-b510-4000b10460d1" message="re publish done" />
+				</when>
+				<otherwise >
+				    <!--    
+				    <set-payload value="#[vars.groupPayload ++ vars.companyPayload ++ vars.outletPayload]" doc:name="Set Payload" doc:id="00a4b555-1b9c-42f9-a9ce-365bc8298444" />
+					<vm:publish queueName="party-insert-Q" doc:name="Publish" doc:id="42eac529-eb4e-4053-bdf5-562ad3ec0364" config-ref="VM_Config" sendCorrelationId="AUTO" />
+					
+					-->
+					<choice doc:name="Choice" doc:id="de5ac4a5-7c9a-46ca-9985-f3617f2a004b">
+						<when expression="#[isEmpty(vars.groupPayload) and isEmpty(vars.companyPayload)]">
+							<set-payload value="#[vars.outletPayload]" doc:name="Set Payload" doc:id="83d46ab4-30f3-4b35-a8be-969297db935b" />
+							<vm:publish doc:name="Publish" doc:id="be8e91bc-f4bf-421b-8476-1f7f10d10370" config-ref="VM_Config" sendCorrelationId="AUTO" queueName="party-update-Q" />
+						</when>
+						<when expression="#[isEmpty(vars.groupPayload) and !isEmpty(vars.companyPayload)]">
+							<foreach doc:name="For Each" doc:id="767981eb-cc09-41fa-b972-16e64f3bfe22" collection="#[vars.companyPayload]">
+								<ee:transform doc:name="Transform Message" doc:id="f25d2bf6-d9c1-4915-b2a6-a653229406d2">
+									<ee:message />
+									<ee:variables>
+										<ee:set-variable variableName="company_rec"><![CDATA[%dw 2.0
+output application/json
+---
+vars.companyPayload filter ((item, index) -> item.payload.partyId == payload.payload.partyId )]]></ee:set-variable>
+										<ee:set-variable variableName="outlet_rec"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payload.payload.partyId )]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+								<set-payload value="#[vars.company_rec ++ vars.outlet_rec]" doc:name="Set Payload" doc:id="578c6c5a-1d68-447d-b59a-d328f1d13b30" />
+								<vm:publish queueName="party-update-Q" doc:name="Publish" doc:id="b0bde138-7389-473f-85d2-cb9131186616" config-ref="VM_Config" sendCorrelationId="AUTO" />
+							</foreach>
+						</when>
+						<otherwise >
+							<foreach doc:name="For Each" doc:id="554ec77d-bd51-4b72-8cb0-c4bafec72321" collection="#[vars.companyPayload]">
+								<ee:transform doc:name="Transform Message" doc:id="879d7841-3876-4b4d-9b6e-d84c7f6e454c">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="group_rec"><![CDATA[%dw 2.0
+output application/json
+---
+vars.groupPayload]]></ee:set-variable>
+										<ee:set-variable variableName="company_rec"><![CDATA[%dw 2.0
+output application/json
+---
+vars.companyPayload filter ((item, index) -> item.payload.partyId == payload.payload.partyId )]]></ee:set-variable>
+										<ee:set-variable variableName="outlet_rec"><![CDATA[%dw 2.0
+output application/json
+---
+vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payload.payload.partyId )]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+								<set-payload value="#[vars.group_rec ++ vars.company_rec ++ vars.outlet_rec]" doc:name="Set Payload" doc:id="4e69e597-25a4-4c40-8403-375ffd937c59" />
+								<vm:publish queueName="party-insert-Q" doc:name="Publish" doc:id="9789e4a7-b9f5-4a51-adf1-38e77ec2eda4" config-ref="VM_Config" sendCorrelationId="AUTO" />
+				
+					</foreach>
+						</otherwise>
+					</choice>
+					
+				</otherwise>						
+		</choice>
+		</foreach>
+		
+	</sub-flow>
+	<flow name="kafka-testFlow1" doc:id="c37abaf7-bf92-4a2a-bd66-9132e6faae24" >
+		<vm:listener doc:name="Listener" doc:id="c08bbe95-c9bb-4cb1-91b3-19401133c3f5" config-ref="VM_Config" queueName="party-insert-Q"/>
+		<logger level="INFO" doc:name="Logger" doc:id="2da86bac-d671-4f4f-a3ca-51213ca07b3a" message="#[payload]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="b69dd3ca-5f3f-48a2-8902-4559d6ba3df7" message="log message insert "/>
+	</flow>
+	<flow name="kafka-testFlow3" doc:id="ed43306a-869b-48ca-ad8e-89197d5bf343" >
+		<vm:listener queueName="party-update-Q" doc:name="Listener" doc:id="a4b72d9c-c820-4658-9c02-6bede00a8ec5" config-ref="VM_Config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="81a745ed-37c9-41b6-9df4-2cd83971a0b8" message="#[payload]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="1c31ab61-3b3b-4bcd-ab6d-08634a9adaee" message="log messgae update"/>
+	</flow>
+</mule>
