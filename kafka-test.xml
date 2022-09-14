@@ -138,6 +138,7 @@ mapObject ((value, key, index) -> {
 pluck ((value, key, index) -> value)]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+		<set-variable value="#[0]" doc:name="Set Variable" doc:id="fa8116bc-6204-42c2-8d17-541e9941137b" variableName="createBatchSize"/>
 		<foreach doc:name="For Each" doc:id="218c4c29-976a-421b-b5ad-901d03734036" collection="#[payload]">
 			<ee:transform doc:name="Transform Message" doc:id="9b5771f3-b2a8-4eea-b791-19e8e6c1fd04" >
 				<ee:message />
@@ -206,6 +207,19 @@ vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payloa
 							</foreach>
 						</when>
 						<otherwise >
+							<ee:transform doc:name="Transform Message" doc:id="f15a54bf-5509-43f6-9cd3-207075ee58cd">
+								<ee:message>
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="createBatchSize" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.createBatchSize + sizeOf(payload)]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<logger level="INFO" doc:name="Logger" doc:id="e9821faf-8f89-4f1d-97e0-abbcff326909" message='#["create batch size :" ++ vars.createBatchSize]'/>
+							<set-variable value="#[[]]" doc:name="Set Variable" doc:id="23c4701d-d446-4222-8be4-b22770de8907" variableName="templist3"/>
+							<set-variable value='#["true"]' doc:name="Set Variable" doc:id="91918d44-ab2e-4f91-8acf-70692431627e" variableName="isFullPayload"/>
 							<foreach doc:name="For Each" doc:id="554ec77d-bd51-4b72-8cb0-c4bafec72321" collection="#[vars.companyPayload]">
 								<ee:transform doc:name="Transform Message" doc:id="879d7841-3876-4b4d-9b6e-d84c7f6e454c">
 							<ee:message>
@@ -214,21 +228,138 @@ vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payloa
 								<ee:set-variable variableName="group_rec"><![CDATA[%dw 2.0
 output application/json
 ---
-vars.groupPayload]]></ee:set-variable>
+(vars.groupPayload)[0]]]></ee:set-variable>
 										<ee:set-variable variableName="company_rec"><![CDATA[%dw 2.0
 output application/json
 ---
-vars.companyPayload filter ((item, index) -> item.payload.partyId == payload.payload.partyId )]]></ee:set-variable>
+(vars.companyPayload filter ((item, index) -> item.payload.partyId == payload.payload.partyId ))[0]]]></ee:set-variable>
 										<ee:set-variable variableName="outlet_rec"><![CDATA[%dw 2.0
 output application/json
 ---
 vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payload.payload.partyId )]]></ee:set-variable>
 							</ee:variables>
 						</ee:transform>
-								<set-payload value="#[vars.group_rec ++ vars.company_rec ++ vars.outlet_rec]" doc:name="Set Payload" doc:id="4e69e597-25a4-4c40-8403-375ffd937c59" />
-								<vm:publish queueName="party-insert-Q" doc:name="Publish" doc:id="9789e4a7-b9f5-4a51-adf1-38e77ec2eda4" config-ref="VM_Config" sendCorrelationId="AUTO" />
+								<set-variable value="#[sizeOf(vars.outlet_rec)]" doc:name="Set Variable" doc:id="5a6686ec-8bdc-48a5-86bd-452700753e4d" variableName="outletRecSize"/>
+								<choice doc:name="Choice" doc:id="0aaf6e05-b343-4105-af5a-8a9f6581b6d5" >
+									<when expression="#[vars.outletRecSize &gt; 0]">
+										<ee:transform doc:name="Transform Message" doc:id="cefea393-11ba-4a4a-8a72-bc29ca6640da">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="tempList1"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"records" : vars.outlet_rec
+}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+										<ee:transform doc:name="Transform Message" doc:id="6ac24fa0-7545-4f64-b10f-ec76f2885443">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="tempList2"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "level" : vars.company_rec.level,
+    "meta" : vars.company_rec.meta,
+    "payload" : vars.company_rec.payload,
+	"outlets" : vars.tempList1
+}]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+										<ee:transform doc:name="Transform Message" doc:id="39ef910b-4e26-4c94-830f-bdf5d3b1e161">
+									<ee:message>
+									</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="templist3"><![CDATA[%dw 2.0
+output application/json
+---
+vars.templist3 << vars.tempList2]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+									</when>
+									<otherwise >
+										<set-variable value='#["false"]' doc:name="Set Variable" doc:id="f5292d3e-3797-4209-989b-2fe5b85d2782" variableName="isFullPayload"/>
+									</otherwise>
+								</choice>
 				
 					</foreach>
+							<choice doc:name="Choice" doc:id="979b1cf2-64e3-4e96-8d62-c21a633c5433" >
+								<when expression='#[vars.isFullPayload == "true"]'>
+									<ee:transform doc:name="Transform Message" doc:id="cab96774-ea6b-4baa-a7ba-dd751442c10e">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="tempList4"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"records" : vars.tempList3
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+									<ee:transform doc:name="Transform Message" doc:id="8e7706a3-bd3f-4372-9be5-1c5730cb5d18">
+								<ee:message>
+								</ee:message>
+								<ee:variables>
+									<ee:set-variable variableName="tempList5"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "level" : vars.group_rec.level,
+    "meta" : vars.group_rec.meta,
+    "payload" : vars.group_rec.payload,
+	"companys" : vars.tempList4
+}]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+									<set-variable value="#[[]]" doc:name="Set Variable" doc:id="8253ccbc-8c6e-4fac-8a1c-369a0bcebdfe" variableName="tempList6"/>
+									<ee:transform doc:name="Transform Message" doc:id="b5187701-9045-481e-94c9-1f349a6b698e">
+										<ee:message>
+										</ee:message>
+										<ee:variables >
+											<ee:set-variable variableName="tempList6" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.templist6 << vars.tempList5]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+									<ee:transform doc:name="Transform Message" doc:id="1d6e1524-821e-4d32-8dae-b08d2b854264">
+										<ee:message>
+										</ee:message>
+										<ee:variables >
+											<ee:set-variable variableName="tempList7" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"records" : vars.tempList6
+}]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+									<set-payload value="#[vars.tempList7]" doc:name="Set Payload" doc:id="4e69e597-25a4-4c40-8403-375ffd937c59" />
+									<vm:publish queueName="party-insert-Q" doc:name="Publish" doc:id="9789e4a7-b9f5-4a51-adf1-38e77ec2eda4" config-ref="VM_Config" sendCorrelationId="AUTO" />
+								</when>
+								<otherwise >
+									<set-payload value="#[vars.groupPayload ++ vars.companyPayload ++ vars.outletPayload]" doc:name="Set Payload" doc:id="d652b09c-6f20-4c6f-a640-b370132cf393" />
+									<foreach doc:name="For Each" doc:id="8599a8b3-65b4-4ecc-bf8b-130ab19b4f73" collection="#[payload]" >
+										<ee:transform doc:name="Transform Message" doc:id="084b6660-5164-457e-abfc-8262f581327c" >
+											<ee:message >
+												<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{	   
+	"meta" : payload.meta,
+	"payload" : payload.payload
+}]]></ee:set-payload>
+											</ee:message>
+										</ee:transform>
+										<kafka:publish doc:name="Publish" doc:id="147ab9da-cad7-43cc-abb6-14037d6cb3d7" config-ref="Apache_Kafka_Producer_configuration" topic="demo1" key="#[now()]" />
+									</foreach>
+									<logger level="INFO" doc:name="Logger" doc:id="3d179cc7-c9dd-4d3c-8882-5595e9a0d7ae" message="republish done"/>
+								</otherwise>
+							</choice>
 						</otherwise>
 					</choice>
 					
@@ -239,7 +370,47 @@ vars.outletPayload filter ((item, index) -> item.payload.parentPartyId == payloa
 	</sub-flow>
 	<flow name="kafka-testFlow1" doc:id="c37abaf7-bf92-4a2a-bd66-9132e6faae24" >
 		<vm:listener doc:name="Listener" doc:id="c08bbe95-c9bb-4cb1-91b3-19401133c3f5" config-ref="VM_Config" queueName="party-insert-Q"/>
-		<logger level="INFO" doc:name="Logger" doc:id="2da86bac-d671-4f4f-a3ca-51213ca07b3a" message="#[payload]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="a9a213ed-6a10-46c4-8514-dc482c6a2090" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="ecf6bb8b-9d10-44c1-b0ed-cda1eb367079">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload.records map ((group , indexOfGroup) -> {
+	attributes: {
+		"type": group.level,
+		referenceId: group.payload.partyId
+	},
+	"legalName": group.payload.legalName,
+    "tradingName": group.payload.tradingName,
+    "boardingStatus": group.payload.boardingStatus,
+	Companys: {
+		records: group.companys.records map ((company, indexOfCompany) -> {
+			attributes: {
+				"type": company.level,
+				referenceId: company.payload.partyId
+			},
+			"legalName": company.payload.legalName,
+    		"tradingName": company.payload.tradingName,
+    		"boardingStatus": company.payload.boardingStatus,
+    		Outlets: {
+    			records: group.companys.records[indexOfCompany].outlets.records map ((outlet, indexOfOutlet) -> {
+					attributes: {
+						"type": outlet.level,
+						referenceId: outlet.payload.partyId
+					},
+					"legalName": outlet.payload.legalName,
+					"tradingName": outlet.payload.tradingName,
+					"boardingStatus": outlet.payload.boardingStatus,
+					"mids": outlet.payload.mids[0]
+				})
+    		}
+		})
+	}
+})]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="f63634f8-c1a5-492e-bbeb-6b69e2ec79a0" message="#[payload]"/>
 		<logger level="INFO" doc:name="Logger" doc:id="b69dd3ca-5f3f-48a2-8902-4559d6ba3df7" message="log message insert "/>
 	</flow>
 	<flow name="kafka-testFlow3" doc:id="ed43306a-869b-48ca-ad8e-89197d5bf343" >
